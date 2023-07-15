@@ -1,0 +1,78 @@
+version: "2"
+services:
+  kibana:
+    image: docker.elastic.co/kibana/kibana:7.17.7
+    restart: unless-stopped
+    depends_on:
+      - "es01"
+    ports:
+      - 5601:5601
+    environment:
+      - ELASTICSEARCH_HOSTS="http://es01:9200"
+      - ELASTICSEARCH_USERNAME
+      - ELASTICSEARCH_PASSWORD
+  es01:
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.7
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01
+      - cluster.initial_master_nodes=es01
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
+      - "xpack.security.enabled=true"
+      - "xpack.security.authc.api_key.enabled=true"
+      - ELASTIC_PASSWORD
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    ports:
+      - 9200:9200
+  mariadb:
+    image: mariadb:10.2
+    environment:
+      - MYSQL_ROOT_PASSWORD
+      - MYSQL_DATABASE
+      - MYSQL_USER
+      - MYSQL_PASSWORD
+    expose:
+      - 3306
+    restart: on-failure
+  keycloak:
+    build: devops/keycloak
+    environment:
+      - KEYCLOAK_ADMIN
+      - KEYCLOAK_ADMIN_PASSWORD
+      - KC_DB=mariadb
+      - KC_DB_URL_HOST=mariadb
+      - KC_DB_URL_DATABASE
+      - KC_DB_URL_PORT=3306
+      - KC_DB_USERNAME
+      - KC_DB_PASSWORD
+      - KC_HOSTNAME=localhost
+      - KC_HOSTNAME_STRICT_HTTPS=false
+      - KC_HTTP_ENABLED=true
+      # Debug
+      - KEYCLOAK_LOGLEVEL=true
+      # - KC_PROXY=edge
+    expose:
+      - 8443
+      - 8080
+    ports:
+      - 8080:8080
+      - 8443:8843
+  # frontend:
+  #   networks:
+  #     - demo
+  #   build: frontend
+  #   expose:
+  #     - 80
+  # init:
+  #   build: es-init
+  #   environment:
+  #     - ELASTICSEARCH_HOST=http://es01:9200
+  #     - ELASTICSEARCH_USERNAME
+  #     - ELASTICSEARCH_PASSWORD
+  #   networks:
+  #     - demo
