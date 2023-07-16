@@ -11,7 +11,6 @@ RUN npm install
 
 # Bundle app source
 COPY . .
-RUN mkdir
 EXPOSE 3000
 COPY connection-org1.json .
 CMD [ "node", "server.js" ]
