@@ -11,6 +11,9 @@ services:
       - ELASTICSEARCH_HOSTS="http://es01:9200"
       - ELASTICSEARCH_USERNAME
       - ELASTICSEARCH_PASSWORD
+    networks:
+      - fabric-test
+      - demo
   es01:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.17.7
     environment:
@@ -29,6 +32,9 @@ services:
         hard: -1
     ports:
       - 9200:9200
+    networks:
+      - fabric-test
+      - demo
   mariadb:
     image: mariadb:10.2
     environment:
@@ -39,6 +45,9 @@ services:
     expose:
       - 3306
     restart: on-failure
+    networks:
+      - fabric-test
+      - demo
   keycloak:
     build: devops/keycloak
     environment:
@@ -62,9 +71,23 @@ services:
     ports:
       - 8087:8080
       - 8443:8843
+    networks:
+      - fabric-test
+      - demo
   blockchain-service:
     build: backend/blockchain-service
     ports:
       - 3000:3000
     environment:
       - ccp=PROD
+    networks:
+      - fabric-test
+      - demo
+
+networks:
+  fabric-test:
+    external:
+      name: fabric_test
+  demo:
+    external:
+      name: demo
