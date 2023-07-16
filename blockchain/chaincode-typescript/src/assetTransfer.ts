@@ -16,8 +16,13 @@ export class AssetTransferContract extends Contract {
             {
                 ID: 'SIGN_1',
                 owner: 'Nicolae',
-                signatories: ["Nicolae"],
-                docHash: '0x1234567890',
+                path_on_disk: 'path_on_disk',
+                signatories: [{
+                    signatory: "Nicolae",
+                    timestamp: "2020-01-01T00:00:00.000Z",
+                }],
+                sha256: '0x1234567890',
+                timestamp: '2020-01-01T00:00:00.000Z',
             },
         ];
 
@@ -34,17 +39,22 @@ export class AssetTransferContract extends Contract {
 
     // CreateAsset issues a new asset to the world state with given details.
     @Transaction()
-    public async CreateAsset(ctx: Context, id: string, owner: string, docHash: string): Promise<void> {
+    public async CreateAsset(ctx: Context, id: string, owner: string, docHash: string, path_on_disk: string, timestamp:string,): Promise<void> {
         const exists = await this.AssetExists(ctx, id);
         if (exists) {
             throw new Error(`The asset ${id} already exists`);
         }
-
+        let signatories = {
+            signatory: owner,
+            timestamp: timestamp,
+        }
         const asset = {
             ID: id,
             owner: owner,
-            signatories: [owner],
-            docHash: docHash,
+            path_on_disk: path_on_disk,
+            signatories: [signatories],
+            sha256: docHash,
+            timestamp: timestamp,
         };
         // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
         await ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
@@ -60,35 +70,6 @@ export class AssetTransferContract extends Contract {
         return assetJSON.toString();
     }
 
-    // UpdateAsset updates an existing asset in the world state with provided parameters.
-    @Transaction()
-    public async UpdateAsset(ctx: Context, id: string, owner: string, docHash: string, signatories: number): Promise<void> {
-        const exists = await this.AssetExists(ctx, id);
-        if (!exists) {
-            throw new Error(`The asset ${id} does not exist`);
-        }
-
-        // overwriting original asset with new asset
-        const updatedAsset = {
-            ID: id,
-            owner: owner,
-            signatories: signatories,
-            docHash: docHash,
-        };
-        // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-        return ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(updatedAsset))));
-    }
-
-    // DeleteAsset deletes an given asset from the world state.
-    @Transaction()
-    public async DeleteAsset(ctx: Context, id: string): Promise<void> {
-        const exists = await this.AssetExists(ctx, id);
-        if (!exists) {
-            throw new Error(`The asset ${id} does not exist`);
-        }
-        return ctx.stub.deleteState(id);
-    }
-
     // AssetExists returns true when asset with given ID exists in world state.
     @Transaction(false)
     @Returns('boolean')
@@ -99,7 +80,7 @@ export class AssetTransferContract extends Contract {
 
     // sign asset
     @Transaction()
-    public async SignAsset(ctx: Context, id: string, signatory: string): Promise<void> {
+    public async SignAsset(ctx: Context, id: string, signatory: string, timestamp: string): Promise<void> {
         const exists = await this.AssetExists(ctx, id);
         if (!exists) {
             throw new Error(`The asset ${id} does not exist`);
@@ -109,13 +90,17 @@ export class AssetTransferContract extends Contract {
         if (!assetJSON || assetJSON.length === 0) {
             throw new Error(`The asset ${id} does not exist`);
         }
+        const Object = {
+            timestamp: timestamp,
+            signatory: signatory,
+        }
         const asset = JSON.parse(assetJSON.toString()) as Asset;
         for(let i = 0; i < asset.signatories.length; i++) {
-            if(asset.signatories[i] === signatory) {
+            if(asset.signatories[i].signatory === signatory) {
                 throw new Error(`The signatory ${signatory} already signed the asset ${id}`);
             }
         }
-        asset.signatories.push(signatory);
+        asset.signatories.push(Object);
         // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
         return ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
     }

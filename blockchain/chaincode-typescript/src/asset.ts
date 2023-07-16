@@ -17,8 +17,24 @@ export class Asset {
     public owner: string;
 
     @Property()
-    public signatories: string[];
+    public signatories: Signatory[];
 
     @Property()
-    public docHash: string;
+    public sha256: string;
+
+    @Property()
+    public timestamp: string;
+
+    @Property()
+    public path_on_disk: string;
+}
+
+@Object()
+export class Signatory {
+
+    @Property()
+    public signatory: string;
+
+    @Property()
+    public timestamp: string;
 }
