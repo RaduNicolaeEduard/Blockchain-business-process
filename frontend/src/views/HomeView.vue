@@ -13,6 +13,9 @@ export default {
     }
   },
   methods: {
+    GetAll(){
+
+    },
     register() {
       this.$keycloak.register();
     },

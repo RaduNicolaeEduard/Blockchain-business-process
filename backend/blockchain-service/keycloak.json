@@ -1,0 +1,11 @@
+{
+    "realm": "SIGN",
+    "auth-server-url": "http://localhost:8080/",
+    "ssl-required": "external",
+    "bearer-only": true,
+    "resource": "backend",
+    "credentials": {
+      "secret": "changeme"
+    },
+    "confidential-port": 0
+  }

@@ -62,17 +62,5 @@ services:
     ports:
       - 8080:8080
       - 8443:8843
-  # frontend:
-  #   networks:
-  #     - demo
-  #   build: frontend
-  #   expose:
-  #     - 80
-  # init:
-  #   build: es-init
-  #   environment:
-  #     - ELASTICSEARCH_HOST=http://es01:9200
-  #     - ELASTICSEARCH_USERNAME
-  #     - ELASTICSEARCH_PASSWORD
-  #   networks:
-  #     - demo
+  blockchain-service:
+    build: backend/blockchain-service
