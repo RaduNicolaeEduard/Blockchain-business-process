@@ -11,6 +11,6 @@ RUN npm install
 
 # Bundle app source
 COPY . .
-
+RUN mkdir wallet uploads
 EXPOSE 3000
 CMD [ "node", "server.js" ]

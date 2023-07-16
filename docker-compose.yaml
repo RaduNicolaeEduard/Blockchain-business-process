@@ -64,3 +64,9 @@ services:
       - 8443:8843
   blockchain-service:
     build: backend/blockchain-service
+    ports:
+      - 3000:3000
+    environment:
+      - ccpPath=/ccp/org1.example.com/connection-org1.json
+    volumes:
+      - ./fabric-samples/test-network/organizations/peerOrganizations:/ccp:ro

@@ -51,8 +51,6 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
     // Extract document_id and signatory from the request body
     userid = req.kauth.grant.access_token.content.sub
     const { document_id } = req.body;
-    const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-    const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
     // Create a new CA client for interacting with the CA.
     const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
     const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -108,8 +106,6 @@ app.get('/contract/:document_id', keycloak.protect(), upload.single('pdf'), asyn
         // get sub from token
         userid = req.kauth.grant.access_token.content.sub
         document_id = req.params.document_id
-        const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-        const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
         // Create a new CA client for interacting with the CA.
         const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
         const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -161,8 +157,6 @@ app.head('/contracts/:document_id', keycloak.protect(), upload.single('pdf'), as
         // get sub from token
         userid = req.kauth.grant.access_token.content.sub
         document_id = req.params.document_id
-        const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-        const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
         // Create a new CA client for interacting with the CA.
         const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
         const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -232,8 +226,6 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     // check if file is pdf
     userid = req.kauth.grant.access_token.content.sub
     // Extract document_id and signatory from the request body
-    const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-    const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
     // Create a new CA client for interacting with the CA.
     const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
     const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -282,8 +274,6 @@ app.get('/contracts/:document_id/pdf', keycloak.protect(), upload.single('pdf'),
         // get sub from token
         userid = req.kauth.grant.access_token.content.sub
         document_id = req.params.document_id
-        const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-        const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
         // Create a new CA client for interacting with the CA.
         const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
         const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -347,8 +337,6 @@ app.get('/contracts', keycloak.protect(), async (req, res) => {
     // get sub from token
     userid = req.kauth.grant.access_token.content.sub
     // Extract document_id and signatory from the request body
-    const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-    const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
     // Create a new CA client for interacting with the CA.
     const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
     const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -410,8 +398,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
 
 // register user
 registerUser = async (userId) => {
-        const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-        const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
         // Create a new CA client for interacting with the CA.
         const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
         const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -468,8 +454,6 @@ registerUser = async (userId) => {
 // enroll admin
 createAdmin = async () => {
         try {
-            const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-            const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
             // Create a new CA client for interacting with the CA.
             const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
             const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -525,7 +509,12 @@ const signPdfX509 = async (pdfLocation, x509, privateKey) => {;
     fs.writeFileSync(pdfLocation, signedPdf);
   });
 };
-
+if(!process.env.ccpPath) {
+  const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
+}else {
+  const ccpPath = process.env.ccpPath
+}
+const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
 createAdmin()
 const port = 3000;
 app.listen(port, () => {
