@@ -6,7 +6,7 @@ services:
     depends_on:
       - "es01"
     ports:
-      - 5601:5601
+      - 5608:5601
     environment:
       - ELASTICSEARCH_HOSTS="http://es01:9200"
       - ELASTICSEARCH_USERNAME
@@ -60,7 +60,7 @@ services:
       - 8443
       - 8080
     ports:
-      - 8080:8080
+      - 8087:8080
       - 8443:8843
   blockchain-service:
     build: backend/blockchain-service
