@@ -269,7 +269,7 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     res.status(500).json({ error: 'Failed to create contract', message: matches });
   }
 });
-app.get('/contract/:document_id/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+app.get('/contracts/:document_id/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
     try {
         // get sub from token
         userid = req.kauth.grant.access_token.content.sub
@@ -510,11 +510,11 @@ const signPdfX509 = async (pdfLocation, x509, privateKey) => {;
   });
 };
 if(!process.env.ccp) {
-  const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
 }else {
   const ccpPath = process.env.ccpPath
 }
-const ccp = JSON.parse(fs.readFileSync("/usr/src/app/connection-org1.json", 'utf8'));
+const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
+const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
 createAdmin()
 const port = 3000;
 app.listen(port, () => {
