@@ -1,40 +1,5 @@
 version: "2"
 services:
-  kibana:
-    image: docker.elastic.co/kibana/kibana:7.17.7
-    restart: unless-stopped
-    depends_on:
-      - "es01"
-    ports:
-      - 5608:5601
-    environment:
-      - ELASTICSEARCH_HOSTS="http://es01:9200"
-      - ELASTICSEARCH_USERNAME
-      - ELASTICSEARCH_PASSWORD
-    networks:
-      - fabric-test
-      - demo
-  es01:
-    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.7
-    environment:
-      - node.name=es01
-      - cluster.name=es-docker-cluster
-      - discovery.seed_hosts=es01
-      - cluster.initial_master_nodes=es01
-      - bootstrap.memory_lock=true
-      - "ES_JAVA_OPTS=-Xms2g -Xmx2g"
-      - "xpack.security.enabled=true"
-      - "xpack.security.authc.api_key.enabled=true"
-      - ELASTIC_PASSWORD
-    ulimits:
-      memlock:
-        soft: -1
-        hard: -1
-    ports:
-      - 9200:9200
-    networks:
-      - fabric-test
-      - demo
   mariadb:
     image: mariadb:10.2
     environment:
@@ -45,9 +10,6 @@ services:
     expose:
       - 3306
     restart: on-failure
-    networks:
-      - fabric-test
-      - demo
   keycloak:
     build: devops/keycloak
     environment:
@@ -64,30 +26,17 @@ services:
       - KC_HTTP_ENABLED=true
       # Debug
       - KEYCLOAK_LOGLEVEL=true
-      - KC_PROXY=edge
+      # - KC_PROXY=edge
     expose:
       - 8443
       - 8080
     ports:
-      - 8087:8080
+      - 8080:8080
       - 8443:8843
-    networks:
-      - fabric-test
-      - demo
   blockchain-service:
     build: backend/blockchain-service
     ports:
       - 3000:3000
     environment:
       - ccp=PROD
-    networks:
-      - fabric-test
-      - demo
-
-networks:
-  fabric-test:
-    external:
-      name: fabric_test
-  demo:
-    external:
-      name: demo
+    network_mode: host
