@@ -510,15 +510,11 @@ const signPdfX509 = async (pdfLocation, x509, privateKey) => {;
   });
 };
 if(!process.env.ccp) {
-}else {
-  const ccpPath = process.env.ccpPath
-}
-if(!process.env.ccp) {
   const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
 }else {
   const ccpPath = process.env.ccpPath
 }
-const ccp = JSON.parse(fs.readFileSync(ccpPath, 'utf8'));
+const ccp = JSON.parse(fs.readFileSync("/usr/src/app/connection-org1.json", 'utf8'));
 createAdmin()
 const port = 3000;
 app.listen(port, () => {
