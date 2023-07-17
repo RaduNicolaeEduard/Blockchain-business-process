@@ -151,7 +151,7 @@ app.get('/contract/:document_id', keycloak.protect(), upload.single('pdf'), asyn
       }
 });
 
-app.head('/contracts/:document_id', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+app.head('/contract/:document_id', keycloak.protect(), upload.single('pdf'), async (req, res) => {
     try {
         console.log(req.params.document_id)
         // get sub from token
@@ -269,7 +269,7 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     res.status(500).json({ error: 'Failed to create contract', message: matches });
   }
 });
-app.get('/contracts/:document_id/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+app.get('/contract/:document_id/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
     try {
         // get sub from token
         userid = req.kauth.grant.access_token.content.sub

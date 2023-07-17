@@ -26,7 +26,7 @@
       }
     ],
     "paths": {
-      "/contracts/{document_id}/pdf": {
+      "/contract/{document_id}/pdf": {
         "get": {
           "summary": "Get PDF contract by document ID",
           "parameters": [
@@ -240,7 +240,7 @@
           }
         }
       },
-      "/contracts/{document_id}": {
+      "/contract/{document_id}": {
         "head": {
           "summary": "check if contract exists",
           "requestParams": {
