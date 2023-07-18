@@ -15,11 +15,14 @@ const Keycloak = require('keycloak-connect');
 const session = require('express-session');
 const crypto = require('crypto');
 const uuid = require('uuid');
-var memoryStore = new session.MemoryStore();
-var keycloak = new Keycloak({ store: memoryStore });
+const memoryStore = new session.MemoryStore();
+const keycloak = new Keycloak({ store: memoryStore });
 const { SignPdf } = require('node-signpdf');
 const forge = require('node-forge');
-//session
+const morgan = require('morgan')
+const compression = require('compression')
+app.use(compression())
+app.use(morgan('tiny'))
 app.use(session({
   secret:'thisShouldBeLongAndSecret',
   resave: false,
@@ -395,7 +398,11 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
     }
   }));
   
-
+app.get('*', function(req, res){
+  // check if request is of type get
+    res.set('Content-Type', 'text/html');
+    res.status(404).send(Buffer.from('<h2>404 Not Found</h2> <p>The requested resource was not found on the server.</p> <p>For more information, please refer to the <a href="/api-docs/">API Documentation</a></p>'));
+});
 // register user
 registerUser = async (userId) => {
         // Create a new CA client for interacting with the CA.

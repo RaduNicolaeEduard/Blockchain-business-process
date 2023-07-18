@@ -2,8 +2,8 @@
     "openapi": "3.0.0",
     "info": {
       "version": "1.0.0",
-      "title": "API Documentation",
-      "description": "Blockchain API Documentation for contracts"
+      "title": "SIGN",
+      "description": "Blockchain Contract Signing API"
     },
     "components": {
       "securitySchemes": {
