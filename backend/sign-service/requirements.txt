@@ -38,3 +38,4 @@ uharfbuzz==0.37.1
 uritools==4.0.1
 urllib3==2.0.2
 Werkzeug==2.3.6
+Pillow
