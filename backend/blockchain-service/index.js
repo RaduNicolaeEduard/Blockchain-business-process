@@ -21,6 +21,13 @@ const { SignPdf } = require('node-signpdf');
 const forge = require('node-forge');
 const morgan = require('morgan')
 const compression = require('compression')
+const https = require('http');
+const { Kafka } = require('kafkajs')
+const kafka = new Kafka({
+  clientId: 'blockchain-service',
+  brokers: ['localhost:9092'],
+})
+const producer = kafka.producer()
 app.use(compression())
 app.use(morgan('tiny'))
 app.use(session({
@@ -52,8 +59,8 @@ app.use(express.urlencoded({ extended: true }));
 app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req, res) => {
   try {
     // Extract document_id and signatory from the request body
-    userid = req.kauth.grant.access_token.content.sub
-    const { document_id } = req.body;
+    userid = req.kauth.grant.access_token.content.sub;
+    const { document_id, sign_document } = req.body;
     // Create a new CA client for interacting with the CA.
     const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
     const caTLSCACerts = caInfo.tlsCACerts.pem;
@@ -78,10 +85,23 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
     // Get the contract from the network.
     const contract = network.getContract('basic');
     const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
-    
     const resultJson = utf8Decoder.decode(resultBytes);
     const result = JSON.parse(resultJson);
-    // signPdfX509(result.file_path, identity.credentials.certificate, identity.credentials.privateKey)
+    // get document path from blo
+    if (sign_document == "true"){
+      signPdfX509(result.path_on_disk, identity.credentials.certificate, identity.credentials.privateKey, userid)
+    }else{
+      const is_valid = compare_file_hashes(req.file.path, result.sha256)
+      await new Promise(resolve => setTimeout(resolve, 50));
+      console.log(is_valid)
+      if (!is_valid){
+        res.status(400).json({ error: 'File does not match the hash' });
+        return
+      }
+      fs.rename(req.file.path, result.path_on_disk, (err) => {
+        if (err) throw err;
+      });
+    }
     // Submit the specified transaction.
     timestamp = new Date().toISOString()
     await contract.submitTransaction('SignAsset', document_id, userid, timestamp);
@@ -215,11 +235,13 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     if (req.file.mimetype !== 'application/pdf') {
         res.status(400).send('File is not pdf.');
     }
+    sign_document = req.body.sign_document
     // generate id
     const id = "SIGN-" + uuid.v4()
     timestamp = new Date().toISOString()
     // make an hash from the pdf file
-    file_path = req.file.path
+    file_path = await move_pdf_based_on_caseid(req.file.path, id)
+    await new Promise(resolve => setTimeout(resolve, 50));
     const fileBuffer = fs.readFileSync(file_path);
     const hashSum = crypto.createHash('sha256');
     hashSum.update(fileBuffer);
@@ -233,7 +255,6 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
     const caTLSCACerts = caInfo.tlsCACerts.pem;
     const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-
     // Create a new file system based wallet for managing identities.
     const walletPath = path.join(process.cwd(), 'wallet');
     const wallet = await Wallets.newFileSystemWallet(walletPath);
@@ -241,9 +262,11 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     // Check to see if we've already enrolled the user.
     let identity = await wallet.get(userid);
     if (!identity) {
-        await registerUser(userid);
+      await registerUser(userid);
     }
-    // signPdfX509(file_path, identity.credentials.certificate, identity.credentials.privateKey)
+    if (sign_document == "true"){
+      signPdfX509(file_path, identity.credentials.certificate, identity.credentials.privateKey, userid)
+    }
     // Create a new gateway for connecting to our peer node.
     const gateway = new Gateway();
     await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
@@ -357,7 +380,6 @@ app.get('/contracts', keycloak.protect(), async (req, res) => {
     // Create a new gateway for connecting to our peer node.
     const gateway = new Gateway();
     await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-
     // Get the network (channel) our contract is deployed to.
     const network = await gateway.getNetwork('mychannel');
 
@@ -403,6 +425,34 @@ app.get('*', function(req, res){
     res.set('Content-Type', 'text/html');
     res.status(404).send(Buffer.from('<h2>404 Not Found</h2> <p>The requested resource was not found on the server.</p> <p>For more information, please refer to the <a href="/api-docs/">API Documentation</a></p>'));
 });
+move_pdf_based_on_caseid = async (pdfLocation, case_id) => {
+  // move the pdf to the case folder
+  const case_folder = path.join(process.cwd(), 'cases', case_id);
+  if (!fs.existsSync(case_folder)){
+    fs.mkdirSync(case_folder);
+  }
+  const new_pdf_location = path.join(case_folder, path.basename(pdfLocation));
+  fs.rename(pdfLocation, new_pdf_location, (err) => {
+    if (err) throw err;
+  });
+  return new_pdf_location
+}
+compare_file_hashes = async (pdfLocation, hash) => {
+  fs.readFile(pdfLocation, (err, data) => {
+    if (err) throw err;
+    const hashSum = crypto.createHash('sha256');
+    hashSum.update(data);
+    const hex = hashSum.digest('hex');
+    console.log(hex)
+    console.log(hash)
+    if (hex == hash) {
+      return true
+    }
+    else {
+      return false
+    }
+  })
+}
 // register user
 registerUser = async (userId) => {
         // Create a new CA client for interacting with the CA.
@@ -503,18 +553,22 @@ function generateP12Certificate(x509, privateKey) {
 
   return p12Der;
 }
-const signPdfX509 = async (pdfLocation, x509, privateKey) => {;
-
-  fs.readFile(pdfLocation, (err, data) => {
-    if (err) {
-      console.error(err);
-      throw new Error('Unable to read file');
-    }
-    const p12 = generateP12Certificate(x509, privateKey)
-    const signedPdf = signer.sign(data,p12);
-
-    fs.writeFileSync(pdfLocation, signedPdf);
-  });
+const signPdfX509 = async (pdfLocation, publickey, privateKey, userid) => {;
+  data = {
+    "privateKey": privateKey,
+    "publickey": publickey,
+    "pdfLocation": pdfLocation,
+    "userid": userid
+  }
+  const dataString = JSON.stringify(data);
+  await producer.connect()
+  await producer.send({
+    topic: 'sign-queue',
+    messages: [
+      { value: dataString },
+    ],
+  })
+  await producer.disconnect()
 };
 if(!process.env.ccp) {
   const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');

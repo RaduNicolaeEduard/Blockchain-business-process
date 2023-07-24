@@ -26,13 +26,23 @@ services:
       - KC_HTTP_ENABLED=true
       # Debug
       - KEYCLOAK_LOGLEVEL=true
-      - KC_PROXY=edge
+      # - KC_PROXY=edge
     expose:
       - 8443
       - 8080
     ports:
       - 8080:8080
       - 8443:8843
+  kafka:
+    image: docker.io/bitnami/kafka:3.2
+    ports:
+      - "9092:9092"
+    volumes:
+      - "kafka_data:/bitnami"
+    environment:
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://localhost:9092
+      - ALLOW_PLAINTEXT_LISTENER=yes
+
   blockchain-service:
     build: backend/blockchain-service
     ports:
@@ -40,3 +50,17 @@ services:
     environment:
       - ccp=PROD
     network_mode: host
+    volumes:
+      - "signatories:/usr/src/app/cases"
+      
+  sign-service:
+    build: backend/sign
+    network_mode: host
+    volumes:
+      - "signatories:/usr/src/app/cases"
+
+volumes:
+  kafka_data:
+    driver: local
+  signatories:
+    driver: local
