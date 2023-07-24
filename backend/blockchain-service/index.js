@@ -98,7 +98,10 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
         res.status(400).json({ error: 'File does not match the hash' });
         return
       }
-      fs.move(req.file.path, result.path_on_disk, (err) => {
+      fs.copyFile(req.file.path, result.path_on_disk, (err) => {
+        if (err) throw err;
+      });
+      fs.unlink(req.file.path, (err) => {
         if (err) throw err;
       });
     }
@@ -432,7 +435,10 @@ move_pdf_based_on_caseid = async (pdfLocation, case_id) => {
     fs.mkdirSync(case_folder);
   }
   const new_pdf_location = path.join(case_folder, path.basename(pdfLocation));
-  fs.move(pdfLocation, new_pdf_location, (err) => {
+  fs.copyFile(pdfLocation, new_pdf_location, (err) => {
+    if (err) throw err;
+  });
+  fs.unlink(pdfLocation, (err) => {
     if (err) throw err;
   });
   return new_pdf_location
