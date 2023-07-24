@@ -52,9 +52,9 @@ services:
     network_mode: host
     volumes:
       - "signatories:/usr/src/app/cases"
-      
+
   sign-service:
-    build: backend/sign
+    build: backend/sign-service
     network_mode: host
     volumes:
       - "signatories:/usr/src/app/cases"
