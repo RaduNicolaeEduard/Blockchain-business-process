@@ -9,6 +9,7 @@ import OpenSSL
 import json
 import tempfile
 import os
+import shutil
 def create_topic_if_not_exists(admin_client, topic, partitions=1, replication_factor=1):
     topic_list = [NewTopic(name=topic, num_partitions=partitions, replication_factor=replication_factor)]
     admin_client.create_topics(topic_list)
@@ -61,6 +62,8 @@ def kafka_consumer():
                 with open(f.name, 'wb') as outf:
                     pdf_signer.sign_pdf(w, output=outf)
                 # os move file
+                shutil.copy(f.name, pdfLocation)
+                os.remove(f.name)
                 os.rename(f.name, pdfLocation)
                 f.close()
 
