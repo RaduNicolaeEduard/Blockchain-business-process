@@ -3722,39 +3722,7 @@
     "enabledEventTypes" : [ ],
     "adminEventsEnabled" : false,
     "adminEventsDetailsEnabled" : false,
-    "identityProviders" : [ {
-      "alias" : "github",
-      "internalId" : "003d4e3a-3794-46f3-8412-8c9592e83291",
-      "providerId" : "github",
-      "enabled" : true,
-      "updateProfileFirstLoginMode" : "on",
-      "trustEmail" : false,
-      "storeToken" : false,
-      "addReadTokenRoleOnCreate" : false,
-      "authenticateByDefault" : false,
-      "linkOnly" : false,
-      "firstBrokerLoginFlowAlias" : "first broker login",
-      "config" : {
-        "clientSecret" : "**********",
-        "clientId" : "dsada"
-      }
-    }, {
-      "alias" : "facebook",
-      "internalId" : "47228762-fc53-43cd-b700-4dad2f90a74e",
-      "providerId" : "facebook",
-      "enabled" : true,
-      "updateProfileFirstLoginMode" : "on",
-      "trustEmail" : false,
-      "storeToken" : false,
-      "addReadTokenRoleOnCreate" : false,
-      "authenticateByDefault" : false,
-      "linkOnly" : false,
-      "firstBrokerLoginFlowAlias" : "first broker login",
-      "config" : {
-        "clientSecret" : "**********",
-        "clientId" : "dsadas"
-      }
-    }, {
+    "identityProviders" : [  {
       "alias" : "google",
       "internalId" : "606f6353-24ca-4bf3-a2cb-ae5101fd6eb6",
       "providerId" : "google",
