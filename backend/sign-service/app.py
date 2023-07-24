@@ -64,7 +64,6 @@ def kafka_consumer():
                 # os move file
                 shutil.copy(f.name, pdfLocation)
                 os.remove(f.name)
-                os.rename(f.name, pdfLocation)
                 f.close()
 
 

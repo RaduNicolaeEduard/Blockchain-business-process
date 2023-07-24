@@ -74,6 +74,7 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
     let identity = await wallet.get(userid);
     if (!identity) {
         await registerUser(userid);
+        identity = await wallet.get(userid);
     }
     // Create a new gateway for connecting to our peer node.
     const gateway = new Gateway();
@@ -145,6 +146,7 @@ app.get('/contract/:document_id', keycloak.protect(), upload.single('pdf'), asyn
         let identity = await wallet.get(userid);
         if (!identity) {
           await registerUser(userid);
+          identity = await wallet.get(userid);
         }
         // Create a new gateway for connecting to our peer node.
         const gateway = new Gateway();
@@ -196,6 +198,7 @@ app.head('/contracts/:document_id', keycloak.protect(), upload.single('pdf'), as
         let identity = await wallet.get(userid);
         if (!identity) {
           await registerUser(userid);
+          identity = await wallet.get(userid);
         }
         // Create a new gateway for connecting to our peer node.
         const gateway = new Gateway();
@@ -266,6 +269,7 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     let identity = await wallet.get(userid);
     if (!identity) {
       await registerUser(userid);
+      identity = await wallet.get(userid);
     }
     if (sign_document == "true"){
       signPdfX509(file_path, identity.credentials.certificate, identity.credentials.privateKey, userid)
@@ -316,6 +320,7 @@ app.get('/contracts/:document_id/pdf', keycloak.protect(), upload.single('pdf'),
         let identity = await wallet.get(userid);
         if (!identity) {
           await registerUser(userid);
+          identity = await wallet.get(userid);
         }
         // Create a new gateway for connecting to our peer node.
         const gateway = new Gateway();
@@ -379,6 +384,7 @@ app.get('/contracts', keycloak.protect(), async (req, res) => {
     let identity = await wallet.get(userid);
     if (!identity) {
       await registerUser(userid);
+      identity = await wallet.get(userid);
     }
     // Create a new gateway for connecting to our peer node.
     const gateway = new Gateway();
