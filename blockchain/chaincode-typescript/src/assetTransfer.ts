@@ -16,28 +16,23 @@ export class AssetTransferContract extends Contract {
             {
                 ID: 'SIGN_1',
                 owner: 'Nicolae',
-                path_on_disk: 'path_on_disk',
                 signatories: [{
                     signatory: "Nicolae",
                     timestamp: "2020-01-01T00:00:00.000Z",
+                    sha256: '0x1234567890',
+                    path_on_disk: 'path_on_disk',
                 }],
-                sha256: '0x1234567890',
                 timestamp: '2020-01-01T00:00:00.000Z',
             },
         ];
 
         for (const asset of assets) {
             asset.docType = 'asset';
-            // example of how to write to world state deterministically
-            // use convetion of alphabetic order
-            // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
-            // when retrieving data, in any lang, the order of data will be the same and consequently also the corresonding hash
             await ctx.stub.putState(asset.ID, Buffer.from(stringify(sortKeysRecursive(asset))));
             console.info(`Asset ${asset.ID} initialized`);
         }
     }
 
-    // CreateAsset issues a new asset to the world state with given details.
     @Transaction()
     public async CreateAsset(ctx: Context, id: string, owner: string, docHash: string, path_on_disk: string, timestamp:string,): Promise<void> {
         const exists = await this.AssetExists(ctx, id);
@@ -56,7 +51,6 @@ export class AssetTransferContract extends Contract {
             sha256: docHash,
             timestamp: timestamp,
         };
-        // we insert data in alphabetic order using 'json-stringify-deterministic' and 'sort-keys-recursive'
         await ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
     }
 
@@ -80,7 +74,7 @@ export class AssetTransferContract extends Contract {
 
     // sign asset
     @Transaction()
-    public async SignAsset(ctx: Context, id: string, signatory: string, timestamp: string): Promise<void> {
+    public async SignAsset(ctx: Context, id: string, signatory: string,sha256: string,path_on_disk: string, timestamp: string): Promise<void> {
         const exists = await this.AssetExists(ctx, id);
         if (!exists) {
             throw new Error(`The asset ${id} does not exist`);
@@ -93,6 +87,8 @@ export class AssetTransferContract extends Contract {
         const Object = {
             timestamp: timestamp,
             signatory: signatory,
+            sha256: sha256,
+            path_on_disk: path_on_disk
         }
         const asset = JSON.parse(assetJSON.toString()) as Asset;
         for(let i = 0; i < asset.signatories.length; i++) {

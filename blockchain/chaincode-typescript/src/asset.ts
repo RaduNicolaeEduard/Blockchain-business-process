@@ -20,13 +20,8 @@ export class Asset {
     public signatories: Signatory[];
 
     @Property()
-    public sha256: string;
-
-    @Property()
     public timestamp: string;
 
-    @Property()
-    public path_on_disk: string;
 }
 
 @Object()
@@ -37,4 +32,10 @@ export class Signatory {
 
     @Property()
     public timestamp: string;
+    
+    @Property()
+    public sha256: string;
+
+    @Property()
+    public path_on_disk: string;
 }
