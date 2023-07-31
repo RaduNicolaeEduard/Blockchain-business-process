@@ -21,5 +21,5 @@ cat >/usr/src/app/.env\
     "confidential-port": 0
 }
 _EOL_
-
+sed -i 's/<policy domain="coder" rights="none" pattern="PDF" \/>/<policy domain="coder" rights="read|write" pattern="PDF" \/>/' /etc/ImageMagick-6/policy.xml
 node /usr/src/app/index.js
