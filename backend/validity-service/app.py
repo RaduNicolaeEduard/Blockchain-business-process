@@ -7,13 +7,17 @@ app = Flask(__name__)
 
 @app.route('/get_signatures', methods=['POST'])
 def get_signatures():
+    print("HIT")
     path_to_check = request.json["path"]
     fd = open(path_to_check, "rb")
-    doc = pdfreader.PDFDocument(fd)
+    docs = pdfreader.PDFDocument(fd)
     pdfreader.PDFDocument.pages
     signatures_on_document = []
-    for doc in doc.root['AcroForm']['Fields']:
-        if doc["FT"] == "Sig":
-            signatures_on_document.append(doc["T"].decode('utf-8'))       
+    for doc in docs.root['AcroForm']['Fields']:
+        print(docs.root['AcroForm']['Fields'])
+        try:
+            signatures_on_document.append(doc["T"].decode('utf-8'))   
+        except:
+            print("error")
     fd.close()
     return signatures_on_document
