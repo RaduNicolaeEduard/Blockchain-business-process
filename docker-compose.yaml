@@ -57,6 +57,7 @@ services:
     network_mode: host
     volumes:
       - "signatories:/usr/src/app/cases"
+      - "wallet://usr/src/app/wallet"
 
   sign-service:
     restart: always
@@ -76,4 +77,6 @@ volumes:
   kafka_data:
     driver: local
   signatories:
+    driver: local
+  wallet:
     driver: local
