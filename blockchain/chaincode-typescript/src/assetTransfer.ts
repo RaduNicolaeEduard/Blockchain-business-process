@@ -9,7 +9,6 @@ import {Asset} from './asset';
 enum DocumentStatus {
     Completed = "Completed",
     Cancelled = "Cancelled",
-    Rejected = "Rejected",
   }
 @Info({title: 'AssetTransfer', description: 'Smart contract for trading assets'})
 export class AssetTransferContract extends Contract {
