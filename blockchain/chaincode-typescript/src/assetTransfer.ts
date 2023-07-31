@@ -6,35 +6,16 @@ import {Context, Contract, Info, Returns, Transaction} from 'fabric-contract-api
 import stringify from 'json-stringify-deterministic';
 import sortKeysRecursive from 'sort-keys-recursive';
 import {Asset} from './asset';
-
+enum DocumentStatus {
+    Completed = "Completed",
+    Cancelled = "Cancelled",
+    Rejected = "Rejected",
+  }
 @Info({title: 'AssetTransfer', description: 'Smart contract for trading assets'})
 export class AssetTransferContract extends Contract {
 
     @Transaction()
-    public async InitLedger(ctx: Context): Promise<void> {
-        const assets: Asset[] = [
-            {
-                ID: 'SIGN_1',
-                owner: 'Nicolae',
-                signatories: [{
-                    signatory: "Nicolae",
-                    timestamp: "2020-01-01T00:00:00.000Z",
-                    sha256: '0x1234567890',
-                    path_on_disk: 'path_on_disk',
-                }],
-                timestamp: '2020-01-01T00:00:00.000Z',
-            },
-        ];
-
-        for (const asset of assets) {
-            asset.docType = 'asset';
-            await ctx.stub.putState(asset.ID, Buffer.from(stringify(sortKeysRecursive(asset))));
-            console.info(`Asset ${asset.ID} initialized`);
-        }
-    }
-
-    @Transaction()
-    public async CreateAsset(ctx: Context, id: string, owner: string, docHash: string, path_on_disk: string, timestamp:string,): Promise<void> {
+    public async CreateAsset(ctx: Context, id: string, owner: string, docHash: string, path_on_disk: string, timestamp:string,title:string,description:string,comment:string): Promise<void> {
         const exists = await this.AssetExists(ctx, id);
         if (exists) {
             throw new Error(`The asset ${id} already exists`);
@@ -42,16 +23,40 @@ export class AssetTransferContract extends Contract {
         let signatories = {
             signatory: owner,
             timestamp: timestamp,
+            sha256: docHash,
+            path_on_disk: path_on_disk,
+            version: 1,
+            status: DocumentStatus.Completed,
+            comment: comment,
         }
         const asset = {
             ID: id,
             owner: owner,
-            path_on_disk: path_on_disk,
             signatories: [signatories],
-            sha256: docHash,
             timestamp: timestamp,
+            title: title,
+            description: description,
         };
         await ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
+    }
+    @Transaction()
+    public async changeStatus(ctx: Context, id: string, signatory: string, status: string): Promise<void> {
+        const exists = await this.AssetExists(ctx, id);
+        if (!exists) {
+            throw new Error(`The asset ${id} does not exist`);
+        }
+        const assetJSON = await ctx.stub.getState(id);
+        if (!assetJSON || assetJSON.length === 0) {
+            throw new Error(`The asset ${id} does not exist`);
+        }
+        const asset = JSON.parse(assetJSON.toString()) as Asset;
+        for(let i = 0; i < asset.signatories.length; i++) {
+            if(asset.signatories[i].signatory === signatory) {
+                asset.signatories[i].status = DocumentStatus[status];
+                return ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
+            }
+        }
+        throw new Error(`The signatory ${signatory} does not exist`);
     }
 
     // ReadAsset returns the asset stored in the world state with given id.
@@ -74,7 +79,7 @@ export class AssetTransferContract extends Contract {
 
     // sign asset
     @Transaction()
-    public async SignAsset(ctx: Context, id: string, signatory: string,sha256: string,path_on_disk: string, timestamp: string): Promise<void> {
+    public async SignAsset(ctx: Context, id: string, signatory: string,sha256: string,path_on_disk: string, timestamp: string,comment:string): Promise<void> {
         const exists = await this.AssetExists(ctx, id);
         if (!exists) {
             throw new Error(`The asset ${id} does not exist`);
@@ -84,13 +89,17 @@ export class AssetTransferContract extends Contract {
         if (!assetJSON || assetJSON.length === 0) {
             throw new Error(`The asset ${id} does not exist`);
         }
+        const asset = JSON.parse(assetJSON.toString()) as Asset;
+        const version = asset.signatories.length + 1;
         const Object = {
             timestamp: timestamp,
             signatory: signatory,
             sha256: sha256,
-            path_on_disk: path_on_disk
+            path_on_disk: path_on_disk,
+            version: version,
+            status: DocumentStatus.Completed,
+            comment: comment,
         }
-        const asset = JSON.parse(assetJSON.toString()) as Asset;
         for(let i = 0; i < asset.signatories.length; i++) {
             if(asset.signatories[i].signatory === signatory) {
                 throw new Error(`The signatory ${signatory} already signed the asset ${id}`);
@@ -101,6 +110,28 @@ export class AssetTransferContract extends Contract {
         return ctx.stub.putState(id, Buffer.from(stringify(sortKeysRecursive(asset))));
     }
 
+    @Transaction()
+    @Returns('string')
+    public async GetMyContracts(ctx: Context, owner: string): Promise<string> {
+        const allResults = [];
+        const iterator = await ctx.stub.getStateByRange('', '');
+        let result = await iterator.next();
+        while (!result.done) {
+            const strValue = Buffer.from(result.value.value.toString()).toString('utf8');
+            let record;
+            try {
+                record = JSON.parse(strValue);
+            } catch (err) {
+                console.log(err);
+                record = strValue;
+            }
+            if(record.owner === owner) {
+                allResults.push(record);
+            }
+            result = await iterator.next();
+        }
+        return JSON.stringify(allResults);
+    }
     // GetAllAssets returns all assets found in the world state.
     @Transaction(false)
     @Returns('string')

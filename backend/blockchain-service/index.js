@@ -5,6 +5,7 @@ const multer = require('multer');
 const swaggerUi = require('swagger-ui-express');
 const swaggerDocument = require('./swagger.json');
 app.use(cors())
+const { Sequelize, DataTypes } = require('sequelize');
 const { Gateway, Wallets } = require('fabric-network');
 const FabricCAServices = require('fabric-ca-client');
 const fs = require('fs');
@@ -23,6 +24,10 @@ const morgan = require('morgan')
 const compression = require('compression')
 const https = require('http');
 const { Kafka } = require('kafkajs')
+const axios = require("axios");
+const { keycloaksearch, KeycloakAdminAccessToken } = require('./keycloak');
+const pdf_thumb = require('pdf-thumbnail');
+require('dotenv').config({path: './.env'});
 const kafka = new Kafka({
   clientId: 'blockchain-service',
   brokers: ['localhost:9092'],
@@ -36,6 +41,21 @@ app.use(session({
   saveUninitialized: true,
   store: memoryStore
 }));
+// const sequelize = new Sequelize('mariadb://root:signpass@127.0.0.1:3306/test');
+const sequelize = new Sequelize(process.env.BLOCKCHAIN_SERVICE_DATABASE_NAME, process.env.BLOCKCHAIN_SERVICE_DATABASE_USER, process.env.BLOCKCHAIN_SERVICE_DATABASE_PASSWORD, {
+  host: process.env.BLOCKCHAIN_SERVICE_DATABASE_HOST,
+  dialect: 'mariadb',
+  dialectOptions: {
+    // Your mariadb options here
+    // connectTimeout: 1000
+  }
+});
+
+const invite = sequelize.define('invite', {
+  owner: DataTypes.STRING,
+  signatory: DataTypes.STRING,
+  caseId: DataTypes.STRING,
+});
 
 app.use(keycloak.middleware());
 const storage = multer.diskStorage({
@@ -52,63 +72,189 @@ const upload = multer({ storage: storage });
 // Configure body-parser middleware
 app.use(express.urlencoded({ extended: true }));
 
+app.post('/invite', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    userid = req.kauth.grant.access_token.content.upn
+    const { document_id, signatory } = req.body;
+    if(userid == signatory){
+      res.status(400).json({ error: "You cannot invite yourself"})
+      return
+    }
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    const adminAccessToken = await KeycloakAdminAccessToken();
+    const response = await keycloaksearch.get('/users', {
+      params: {
+        search: signatory,
+      },
+      headers: {
+        Authorization: `Bearer ${adminAccessToken}`,
+      },
+    });
+    const users = response.data;
+    found = false;
+    users.forEach(user => {
+      if (user.email = signatory){
+        found = true
+      }
+    });
+    if(!found){
+      res.status(404).json({ error: "User not found"})
+      return
+    }
+    const invited = await invite.findOne({ where: { owner: userid, signatory: signatory, caseId: result.ID } });
+    console.log(invited)
+    if (invited){
+      res.status(400).json({ error: "User already invited"})
+      return
+    }
+    if(result.owner == userid){
+      await invite.create({
+        caseId: result.ID,
+        owner: userid,
+        signatory: signatory
+      });
+    }else {
+      res.status(500).json({ error: "You are not the owner of the document"})
+      return
+    }
+    res.status(200).json({ message: 'Person invited successfully', id: document_id });
+  } catch (error) {
+    res.status(500).json({ error: "Failed to invite person"})
+  }
+});
+
+check_if_user_is_invited = async (userid, document_id) => {
+  const invited = await invite.findOne({ where: { signatory: userid, caseId: document_id } });
+  if (invited){
+    return true
+  }else{
+    return false
+  }
+}
+
+app.get('/contract/:document_id/thumbnail', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  // try {
+    // get sub from token
+    userid = req.kauth.grant.access_token.content.upn
+    document_id = req.params.document_id
+    // Create a new CA client for interacting with the CA.
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+
+    // Submit the specified transaction.
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    if(result.owner != userid){
+      res.status(401).json({ error: 'You are not authorized' });
+      return
+    }
+    if(!check_if_user_is_invited(userid, document_id)){
+      res.status(401).json({ error: 'You are not authorized' });
+      return
+    }
+    latest_version = result.signatories.length - 1;
+    pdf_location = path.join(result.signatories[latest_version].path_on_disk)
+
+    pdfBuffer = fs.readFileSync(pdf_location);
+    pdf_thumb(pdfBuffer).then(data => {
+
+      // make temporary file
+      const temp_file = path.join(process.cwd(), 'temp', document_id + ".jpg");
+      data.pipe(fs.createWriteStream(temp_file)).on('finish', function () {
+        blob = fs.readFileSync(temp_file);
+        res.writeHead(200, {'Content-Type': 'image/jpg', 'Content-Disposition': 'attachment; filename=download.jpg'});
+        res.end(blob, 'binary');
+        fs.unlink(temp_file, (err) => {
+          if (err) {
+            console.error(err)
+            return
+          }
+        }
+        )
+      });
+    }, err => {
+      console.error(err);
+      res.status(500).end();
+    });
+    await gateway.disconnect();
+
+  // } catch (error) {
+  //   matches = error_message(error)
+  //   res.status(500).json({ error: 'Failed to get contract', message: matches });
+  // }
+});
 
 
+app.get('/contract/:document_id/signatories', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    userid = req.kauth.grant.access_token.content.upn
+    document_id = req.params.document_id
+    console.log(document_id)
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    // Disconnect from the gateway.
+    await gateway.disconnect();
+    invited = await invite.findAll({ where: { caseId: document_id } });
+    signatories = []
+    for(let i = 0; i < invited.length; i++){
+      signatories.push(invited[i].signatory)
+    }
+    if(result.owner == userid){
+      res.status(200).json(signatories);
+      return
+    }
+    if(check_if_user_is_invited(userid, document_id)){
+      res.status(200).json(signatories);
+      return
+    }
+    res.status(401).json({ error: 'You are not authorized' });
+  } catch (error) {
+    matches = error_message(error)
+    console.error(`Failed to submit transaction: ${error}`);
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
+});
 // peer chaincode query -C mychannel -n basic -c '{"Args":["GetAllAssets"]}'
 // ./network.sh down; ./network.sh up createChannel -ca; ./network.sh deployCC -ccn basic -ccp ../asset-transfer-basic/chaincode-typescript -ccl typescript
 app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req, res) => {
   try {
     // Extract document_id and signatory from the request body
-    userid = req.kauth.grant.access_token.content.sub;
-    const { document_id, sign_document } = req.body;
-    // Create a new CA client for interacting with the CA.
-    const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
-    const caTLSCACerts = caInfo.tlsCACerts.pem;
-    const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-
-    // Create a new file system based wallet for managing identities.
-    const walletPath = path.join(process.cwd(), 'wallet');
-    const wallet = await Wallets.newFileSystemWallet(walletPath);
-
-    // Check to see if we've already enrolled the user.
-    let identity = await wallet.get(userid);
-    if (!identity) {
-        await registerUser(userid);
-        identity = await wallet.get(userid);
+    userid = req.kauth.grant.access_token.content.upn
+    const { document_id, sign_document, comment } = req.body;
+    if(!await check_if_user_is_invited(userid, document_id)){
+      res.status(400).json({ error: "You are not invited to sign this document"})
+      return
     }
-    // Create a new gateway for connecting to our peer node.
-    const gateway = new Gateway();
-    await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-
-    // Get the network (channel) our contract is deployed to.
-    const network = await gateway.getNetwork('mychannel');
-
-    // Get the contract from the network.
-    const contract = network.getContract('basic');
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
     const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
     const resultJson = utf8Decoder.decode(resultBytes);
     const result = JSON.parse(resultJson);
-    // get document path from blo
+    let hex
     if (sign_document == "true"){
-      signPdfX509(result.path_on_disk, identity.credentials.certificate, identity.credentials.privateKey, userid)
+      latest_version = result.signatories.length - 1;
+      filepath = await move_pdf_based_on_caseid(result.signatories[latest_version].path_on_disk, document_id)
+      signPdfX509(filepath, identity.credentials.certificate, identity.credentials.privateKey, userid)
+      const fileBuffer = fs.readFileSync(filepath);
+      const hashSum = crypto.createHash('sha256');
+      hashSum.update(fileBuffer);
+      hex = hashSum.digest('hex');
     }else{
-      const is_valid = compare_file_hashes(req.file.path, result.sha256)
-      await new Promise(resolve => setTimeout(resolve, 50));
-      console.log(is_valid)
-      if (!is_valid){
-        res.status(400).json({ error: 'File does not match the hash' });
-        return
-      }
-      fs.copyFile(req.file.path, result.path_on_disk, (err) => {
-        if (err) throw err;
-      });
-      fs.unlink(req.file.path, (err) => {
-        if (err) throw err;
-      });
+      filepath = move_pdf_based_on_caseid(req.file.path, document_id)
+      const fileBuffer = fs.readFileSync(filepath);
+      const hashSum = crypto.createHash('sha256');
+      hashSum.update(fileBuffer);
+      hex = hashSum.digest('hex');
     }
     // Submit the specified transaction.
     timestamp = new Date().toISOString()
-    await contract.submitTransaction('SignAsset', document_id, userid, timestamp);
+
+    await contract.submitTransaction('SignAsset', document_id, userid, hex, filepath, timestamp, comment);
     console.log('Transaction has been submitted');
 
     // Disconnect from the gateway.
@@ -117,13 +263,7 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
     res.status(200).json({ message: 'Document signed successfully', id: document_id });
 
   } catch (error) {
-    const regex = /message=(.*?)\n/g;
-    const matches = [];
-    let match;
-
-    while ((match = regex.exec(error.message)) !== null) {
-    matches.push(match[1]);
-    }
+    matches = error_message(error)
     console.error(`Failed to submit transaction: ${error}`);
     res.status(500).json({ error: 'Failed to sign document', message: matches });
   }
@@ -131,50 +271,32 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
 app.get('/contract/:document_id', keycloak.protect(), upload.single('pdf'), async (req, res) => {
     try {
         // get sub from token
-        userid = req.kauth.grant.access_token.content.sub
+        userid = req.kauth.grant.access_token.content.upn
         document_id = req.params.document_id
         // Create a new CA client for interacting with the CA.
-        const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
-        const caTLSCACerts = caInfo.tlsCACerts.pem;
-        const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-    
-        // Create a new file system based wallet for managing identities.
-        const walletPath = path.join(process.cwd(), 'wallet');
-        const wallet = await Wallets.newFileSystemWallet(walletPath);
-    
-        // Check to see if we've already enrolled the user.
-        let identity = await wallet.get(userid);
-        if (!identity) {
-          await registerUser(userid);
-          identity = await wallet.get(userid);
-        }
-        // Create a new gateway for connecting to our peer node.
-        const gateway = new Gateway();
-        await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-    
-        // Get the network (channel) our contract is deployed to.
-        const network = await gateway.getNetwork('mychannel');
-    
-        // Get the contract from the network.
-        const contract = network.getContract('basic');
+        const { contract, gateway, identity } = await connect_to_chaincode(userid);
     
         // Submit the specified transaction.
         const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
     
         const resultJson = utf8Decoder.decode(resultBytes);
         const result = JSON.parse(resultJson);
-
-        res.status(200).json(result);
+        // remove path_on_disk from response which is in the array signatories
+        for(let i = 0; i < result.signatories.length; i++){
+          delete result.signatories[i].path_on_disk
+        }
+        if(result.owner == userid){
+          res.status(200).json(result);
+          return
+        }
+        if(check_if_user_is_invited(userid, document_id)){
+          res.status(200).json(result);
+          return
+        }
+        res.status(401).json({ error: 'You are not authorized' });
         
     }catch (error) {
-        const regex = /message=(.*?)\n/g;
-        const matches = [];
-        let match;
-    
-        while ((match = regex.exec(error.message)) !== null) {
-        matches.push(match[1]);
-        }
-        console.error(`Failed to submit transaction: ${error}`);
+      matches = error_message(error)
         res.status(500).json({ error: 'Failed to get contract', message: matches });
       }
 });
@@ -183,32 +305,10 @@ app.head('/contracts/:document_id', keycloak.protect(), upload.single('pdf'), as
     try {
         console.log(req.params.document_id)
         // get sub from token
-        userid = req.kauth.grant.access_token.content.sub
+        userid = req.kauth.grant.access_token.content.upn
         document_id = req.params.document_id
         // Create a new CA client for interacting with the CA.
-        const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
-        const caTLSCACerts = caInfo.tlsCACerts.pem;
-        const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-    
-        // Create a new file system based wallet for managing identities.
-        const walletPath = path.join(process.cwd(), 'wallet');
-        const wallet = await Wallets.newFileSystemWallet(walletPath);
-    
-        // Check to see if we've already enrolled the user.
-        let identity = await wallet.get(userid);
-        if (!identity) {
-          await registerUser(userid);
-          identity = await wallet.get(userid);
-        }
-        // Create a new gateway for connecting to our peer node.
-        const gateway = new Gateway();
-        await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-    
-        // Get the network (channel) our contract is deployed to.
-        const network = await gateway.getNetwork('mychannel');
-    
-        // Get the contract from the network.
-        const contract = network.getContract('basic');
+        const { contract, gateway, identity } = await connect_to_chaincode(userid);
     
         // Submit the specified transaction.
         const resultBytes = await contract.evaluateTransaction('AssetExists', document_id);
@@ -219,7 +319,15 @@ app.head('/contracts/:document_id', keycloak.protect(), upload.single('pdf'), as
         // Disconnect from the gateway.
         await gateway.disconnect();
         if (result) {
+          if(result.owner == userid){
             res.status(200).json({ message: 'Document exists' });
+            return
+          }
+          if(check_if_user_is_invited(userid, document_id)){
+            res.status(200).json({ message: 'Document exists' });
+            return
+          }
+          res.status(401).json({ error: 'You are not authorized' });
         }
         else {
             res.status(404).json({ message: 'Document does not exist' });
@@ -230,7 +338,121 @@ app.head('/contracts/:document_id', keycloak.protect(), upload.single('pdf'), as
         res.status(500).json({ error: 'Something Went Wrong' });
       }
     });
-        
+
+app.post('/update_status', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    // Extract document_id and signatory from the request body
+    userid = req.kauth.grant.access_token.content.upn
+    const { document_id, status, version } = req.body;
+    // Create a new CA client for interacting with the CA.
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+    await contract.submitTransaction('changeStatus', document_id, userid, status, version);
+    console.log('Transaction has been submitted');
+
+    await gateway.disconnect();
+
+    res.status(200).json({ message: 'Document status updated successfully', id: document_id });
+
+  } catch (error) {
+    matches = error_message(error)
+    res.status(500).json({ error: 'Failed to update document status', message: matches });
+  }
+});
+app.post('/file_fingerprint', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    // Extract document_id and signatory from the request body
+    userid = req.kauth.grant.access_token.content.upn
+    const { document_id, status, version } = req.body;
+    // Create a new CA client for interacting with the CA.
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+    // read asset
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    const fileBuffer = fs.readFileSync(req.file.path);
+    const hashSum = crypto.createHash('sha256');
+    hashSum.update(fileBuffer);
+    const hex = hashSum.digest('hex');
+    for(let i = 0; i < result.signatories.length; i++){
+      if(result.signatories[i].hash == hex){
+        res.status(200).json({ message: 'Document fingerprint matches', id: document_id, version: i + 1 });
+        return
+      }
+    }
+    res.status(400).json({ error: 'Document fingerprint does not match' });
+  } catch (error) {
+    matches = error_message(error)
+    res.status(500).json({ error: 'Failed to update document status', message: matches });
+  }
+});
+app.get('/contract/:document_id/verify', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    // get sub from token
+    userid = req.kauth.grant.access_token.content.upn
+    document_id = req.params.document_id
+    // Create a new CA client for interacting with the CA.
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+
+    // Submit the specified transaction.
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    latest_version = result.signatories.length - 1;
+    pdf_location = result.signatories[latest_version].path_on_disk
+    await gateway.disconnect();
+    const json_data = {"path": pdf_location} 
+    const sign_data = await axios.post(process.env.SIGN_SERVICE_URL, json_data)
+    response = sign_data.data
+    if(result.owner == userid){
+      res.status(200).json ({signatures: response });
+      return
+    }
+    if(check_if_user_is_invited(userid, document_id)){
+      res.status(200).json ({signatures: response });
+      return
+    }
+    res.status(401).json({ error: 'You are not authorized' });
+  }
+  catch (error) {
+    matches = error_message(error)
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
+});
+app.get('/contract/:document_id/:version/verify', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    // get sub from token
+    userid = req.kauth.grant.access_token.content.upn
+    document_id = req.params.document_id
+    version = req.params.version - 1;
+    // Create a new CA client for interacting with the CA.
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+
+    // Submit the specified transaction.
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    pdf_location = result.signatories[version].path_on_disk
+    await gateway.disconnect();
+    const json_data = {"path": pdf_location} 
+    const sign_data = await axios.post(SIGN_SERVICE_URL, json_data)
+    response = sign_data.data
+    if(result.owner == userid){
+      res.status(200).json ({signatures: response });
+      return
+    }
+    if(check_if_user_is_invited(userid, document_id)){
+      res.status(200).json ({signatures: response });
+      return
+    }
+    res.status(401).json({ error: 'You are not authorized' });
+  }
+  catch (error) {
+    matches = error_message(error)
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
+});
 app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (req, res) => {
   try {
     if (req.file) {
@@ -242,6 +464,9 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
         res.status(400).send('File is not pdf.');
     }
     sign_document = req.body.sign_document
+    comment = req.body.comment
+    description = req.body.description
+    title = req.body.title
     // generate id
     const id = "SIGN-" + uuid.v4()
     timestamp = new Date().toISOString()
@@ -255,90 +480,129 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     const hex = hashSum.digest('hex');
 
     // check if file is pdf
-    userid = req.kauth.grant.access_token.content.sub
-    // Extract document_id and signatory from the request body
-    // Create a new CA client for interacting with the CA.
-    const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
-    const caTLSCACerts = caInfo.tlsCACerts.pem;
-    const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-    // Create a new file system based wallet for managing identities.
-    const walletPath = path.join(process.cwd(), 'wallet');
-    const wallet = await Wallets.newFileSystemWallet(walletPath);
-    // wait for peer endorsement
-    // Check to see if we've already enrolled the user.
-    let identity = await wallet.get(userid);
-    if (!identity) {
-      await registerUser(userid);
-      identity = await wallet.get(userid);
-    }
+    userid = req.kauth.grant.access_token.content.upn
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+
     if (sign_document == "true"){
       signPdfX509(file_path, identity.credentials.certificate, identity.credentials.privateKey, userid)
     }
-    // Create a new gateway for connecting to our peer node.
-    const gateway = new Gateway();
-    await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-
-    // Get the network (channel) our contract is deployed to.
-    const network = await gateway.getNetwork('mychannel');
-
-    // Get the contract from the network.
-    const contract = network.getContract('basic');
 
     // Submit the specified transaction.
-    await contract.submitTransaction('CreateAsset',id, userid, hex,file_path,timestamp);
+    await contract.submitTransaction('CreateAsset',id, userid, hex,file_path,timestamp,title,description,comment);
     console.log('Transaction has been submitted');
     await gateway.disconnect();
 
     res.status(200).json({ message: 'Document created', id: id });
   } catch (error) {
-    const regex = /message=(.*?)\n/g;
-    const matches = [];
-    let match;
-
-    while ((match = regex.exec(error.message)) !== null) {
-    matches.push(match[1]);
-    }
-    console.error(`Failed to submit transaction: ${error}`);
+    matches = error_message(error)
     res.status(500).json({ error: 'Failed to create contract', message: matches });
   }
 });
-app.get('/contracts/:document_id/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+app.get('/my/contracts', keycloak.protect(), async (req, res) => {
+  try {
+    userid = req.kauth.grant.access_token.content.upn
+    // Extract document_id and signatory from the request body
+    // Create a new CA client for interacting with the CA.
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+
+    // Submit the specified transaction.
+    const resultBytes = await contract.evaluateTransaction('GetMyContracts', userid);
+
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    console.log(result)
+    document_ids = []
+    for(let i = 0; i < result.length; i++){
+      document_ids.push(result[i].ID)
+    }
+    // Disconnect from the gateway.
+    await gateway.disconnect();
+
+    res.status(200).json(document_ids);
+
+  } catch (error) {
+    matches = error_message(error)
+    console.error(`Failed to submit transaction: ${error}`);
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
+});
+
+app.get('/my/invites', keycloak.protect(), async (req, res) => {
+  try {
+    userid = req.kauth.grant.access_token.content.upn
+    invites = await invite.findAll({ where: { signatory: userid } });
+    document_ids = []
+    for (let i = 0; i < invites.length; i++){
+      document_ids.push(invites[i].caseId)
+    }
+    res.status(200).json(document_ids);
+  } catch (error) {
+    matches = error_message(error)
+    console.error(`Failed to submit transaction: ${error}`);
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
+});
+
+app.get('/contract/:document_id/:version/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
+  try {
+    // get sub from token
+    userid = req.kauth.grant.access_token.content.upn
+    document_id = req.params.document_id
+    version = req.params.version - 1;
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
+
+    // Submit the specified transaction.
+    const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
+
+
+    const resultJson = utf8Decoder.decode(resultBytes);
+    const result = JSON.parse(resultJson);
+    pdf_location = path.join(result.signatories[version].path_on_disk)
+    // Disconnect from the gateway.
+    await gateway.disconnect();
+
+    // read pdf as binary
+    fs.readFile(pdf_location, (err, data) => {
+      if (err) {
+        console.error(err);
+        res.status(err.status).end();
+        return;
+    }
+    if(result.owner == userid){
+      res.writeHead(200, {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=download.pdf'});
+      res.end(data, 'binary');
+      return
+    }
+    if(check_if_user_is_invited(userid, document_id)){
+      res.writeHead(200, {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=download.pdf'});
+      res.end(data, 'binary');
+      return
+    }
+    res.status(401).json({ error: 'You are not authorized' });
+    res.end(data, 'binary');
+    });
+
+  } catch (error) {
+    matches = error_message(error)
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
+});
+
+app.get('/contract/:document_id/pdf', keycloak.protect(), upload.single('pdf'), async (req, res) => {
     try {
         // get sub from token
-        userid = req.kauth.grant.access_token.content.sub
+        userid = req.kauth.grant.access_token.content.upn
         document_id = req.params.document_id
-        // Create a new CA client for interacting with the CA.
-        const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
-        const caTLSCACerts = caInfo.tlsCACerts.pem;
-        const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-    
-        // Create a new file system based wallet for managing identities.
-        const walletPath = path.join(process.cwd(), 'wallet');
-        const wallet = await Wallets.newFileSystemWallet(walletPath);
-    
-        // Check to see if we've already enrolled the user.
-        let identity = await wallet.get(userid);
-        if (!identity) {
-          await registerUser(userid);
-          identity = await wallet.get(userid);
-        }
-        // Create a new gateway for connecting to our peer node.
-        const gateway = new Gateway();
-        await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-    
-        // Get the network (channel) our contract is deployed to.
-        const network = await gateway.getNetwork('mychannel');
-    
-        // Get the contract from the network.
-        const contract = network.getContract('basic');
-    
+
+        const { contract, gateway, identity } = await connect_to_chaincode(userid);
         // Submit the specified transaction.
         const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
 
     
         const resultJson = utf8Decoder.decode(resultBytes);
         const result = JSON.parse(resultJson);
-        pdf_location = path.join(result.path_on_disk)
+        latest_version = result.signatories.length - 1;
+        pdf_location = path.join(result.signatories[latest_version].path_on_disk)
     
         // Disconnect from the gateway.
         await gateway.disconnect();
@@ -350,50 +614,35 @@ app.get('/contracts/:document_id/pdf', keycloak.protect(), upload.single('pdf'),
             res.status(err.status).end();
             return;
         }
-        res.writeHead(200, {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=download.pdf'});
+        if(result.owner == userid){
+          res.writeHead(200, {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=download.pdf'});
+          res.end(data, 'binary');
+          return
+        }
+        if(check_if_user_is_invited(userid, document_id)){
+          res.writeHead(200, {'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename=download.pdf'});
+          res.end(data, 'binary');
+          return
+        }
+        res.status(401).json({ error: 'You are not authorized' });
         res.end(data, 'binary');
         });
     
       } catch (error) {
-        const regex = /message=(.*?)\n/g;
-        const matches = [];
-        let match;
-    
-        while ((match = regex.exec(error.message)) !== null) {
-        matches.push(match[1]);
-        }
-        console.error(`Failed to submit transaction: ${error}`);
+        matches = error_message(error)
         res.status(500).json({ error: 'Failed to get contract', message: matches });
       }
 });
 app.get('/contracts', keycloak.protect(), async (req, res) => {
   try {
-    // get sub from token
-    userid = req.kauth.grant.access_token.content.sub
+    userid = req.kauth.grant.access_token.content.upn
+    if(!req.kauth.grant.access_token.content.realm_access.roles.includes("admin")){
+      res.status(401).json({ error: 'You are not authorized' });
+      return
+    }
     // Extract document_id and signatory from the request body
     // Create a new CA client for interacting with the CA.
-    const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
-    const caTLSCACerts = caInfo.tlsCACerts.pem;
-    const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
-
-    // Create a new file system based wallet for managing identities.
-    const walletPath = path.join(process.cwd(), 'wallet');
-    const wallet = await Wallets.newFileSystemWallet(walletPath);
-
-    // Check to see if we've already enrolled the user.
-    let identity = await wallet.get(userid);
-    if (!identity) {
-      await registerUser(userid);
-      identity = await wallet.get(userid);
-    }
-    // Create a new gateway for connecting to our peer node.
-    const gateway = new Gateway();
-    await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
-    // Get the network (channel) our contract is deployed to.
-    const network = await gateway.getNetwork('mychannel');
-
-    // Get the contract from the network.
-    const contract = network.getContract('basic');
+    const { contract, gateway, identity } = await connect_to_chaincode(userid);
 
     // Submit the specified transaction.
     const resultBytes = await contract.evaluateTransaction('GetAllAssets');
@@ -404,16 +653,17 @@ app.get('/contracts', keycloak.protect(), async (req, res) => {
     // Disconnect from the gateway.
     await gateway.disconnect();
 
-    res.status(200).json(result);
-
-  } catch (error) {
-    const regex = /message=(.*?)\n/g;
-    const matches = [];
-    let match;
-
-    while ((match = regex.exec(error.message)) !== null) {
-    matches.push(match[1]);
+    if(result.owner == userid){
+      res.status(200).json(result);
+      return
     }
+    if(check_if_user_is_invited(userid, document_id)){
+      res.status(200).json(result);
+      return
+    }
+    res.status(401).json({ error: 'You are not authorized' });
+  } catch (error) {
+    matches = error_message(error)
     console.error(`Failed to submit transaction: ${error}`);
     res.status(500).json({ error: 'Failed to get contract', message: matches });
   }
@@ -436,34 +686,57 @@ app.get('*', function(req, res){
 });
 move_pdf_based_on_caseid = async (pdfLocation, case_id) => {
   // move the pdf to the case folder
+  salt = uuid.v4()
   const case_folder = path.join(process.cwd(), 'cases', case_id);
   if (!fs.existsSync(case_folder)){
     fs.mkdirSync(case_folder);
   }
-  const new_pdf_location = path.join(case_folder, path.basename(pdfLocation));
+  let new_pdf_location = path.join(case_folder, path.basename(pdfLocation));
+  new_pdf_location = new_pdf_location + salt + ".pdf"
   fs.copyFile(pdfLocation, new_pdf_location, (err) => {
-    if (err) throw err;
-  });
-  fs.unlink(pdfLocation, (err) => {
     if (err) throw err;
   });
   return new_pdf_location
 }
-compare_file_hashes = async (pdfLocation, hash) => {
-  fs.readFile(pdfLocation, (err, data) => {
-    if (err) throw err;
-    const hashSum = crypto.createHash('sha256');
-    hashSum.update(data);
-    const hex = hashSum.digest('hex');
-    console.log(hex)
-    console.log(hash)
-    if (hex == hash) {
-      return true
-    }
-    else {
-      return false
-    }
-  })
+error_message = (error) => {
+  const regex = /message=(.*?)\n/g;
+  const matches = [];
+  let match;
+
+  while ((match = regex.exec(error.message)) !== null) {
+  matches.push(match[1]);
+  }
+  console.error(`Failed to submit transaction: ${error}`);
+  return matches
+}
+connect_to_chaincode = async (userid) => {
+  // Create a new CA client for interacting with the CA.
+  const caInfo = ccp.certificateAuthorities['ca.org1.example.com'];
+  const caTLSCACerts = caInfo.tlsCACerts.pem;
+  const ca = new FabricCAServices(caInfo.url, { trustedRoots: caTLSCACerts, verify: false }, caInfo.caName);
+
+  // Create a new file system based wallet for managing identities.
+  const walletPath = path.join(process.cwd(), 'wallet');
+  const wallet = await Wallets.newFileSystemWallet(walletPath);
+
+  // Check to see if we've already enrolled the user.
+  let identity = await wallet.get(userid);
+  if (!identity) {
+    await registerUser(userid);
+    identity = await wallet.get(userid);
+  }
+  // Create a new gateway for connecting to our peer node.
+  const gateway = new Gateway();
+  await gateway.connect(ccp, { wallet, identity: userid, discovery: { enabled: true, asLocalhost: true } });
+
+  // Get the network (channel) our contract is deployed to.
+  const network = await gateway.getNetwork('mychannel');
+
+  // Get the contract from the network.
+  const contract = network.getContract('basic');
+
+  // Submit the specified transaction.
+  return { contract, gateway , identity};
 }
 // register user
 registerUser = async (userId) => {
@@ -555,16 +828,6 @@ createAdmin = async () => {
           }
         }
 
-function generateP12Certificate(x509, privateKey) {
-
-  const cert = forge.pki.certificateFromPem(x509);
-  const pk = forge.pki.privateKeyFromPem(privateKey);
-
-  const p12Asn1 = forge.pkcs12.toPkcs12Asn1(pk, cert, null); // Set password parameter to null
-  const p12Der = forge.asn1.toDer(p12Asn1).getBytes();
-
-  return p12Der;
-}
 const signPdfX509 = async (pdfLocation, publickey, privateKey, userid) => {;
   data = {
     "privateKey": privateKey,
@@ -582,12 +845,8 @@ const signPdfX509 = async (pdfLocation, publickey, privateKey, userid) => {;
   })
   await producer.disconnect()
 };
-if(!process.env.ccp) {
-  const ccpPath = path.resolve('/Users/nicolae/Desktop/Projects/Personal/Blockchain-business-process/fabric-samples/', 'test-network', 'organizations', 'peerOrganizations', 'org1.example.com', 'connection-org1.json');
-}else {
-  const ccpPath = process.env.ccpPath
-}
-const ccp = JSON.parse(fs.readFileSync("/usr/src/app/connection-org1.json", 'utf8'));
+
+const ccp = JSON.parse(fs.readFileSync(process.env.ORGANISTAION_CONNECTION_PATH, 'utf8'));
 createAdmin()
 const port = 3000;
 app.listen(port, () => {

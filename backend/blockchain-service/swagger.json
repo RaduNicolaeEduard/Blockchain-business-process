@@ -26,7 +26,51 @@
     }
   ],
   "paths": {
-    "/contracts/{document_id}/pdf": {
+    "/contract/{document_id}/thumbnail": {
+      "get": {
+        "summary": "Get PDF thumbnail by document ID",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "ID of the document",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "thumbnail retrieved successfully",
+            "headers": {
+              "content-disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Specifies the filename and disposition of the PDF"
+              }
+            },
+            "content": {
+              "application/jpg": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/contract/{document_id}/pdf": {
       "get": {
         "summary": "Get PDF contract by document ID",
         "parameters": [
@@ -34,6 +78,57 @@
             "name": "document_id",
             "in": "path",
             "description": "ID of the document",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "PDF retrieved successfully",
+            "headers": {
+              "content-disposition": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Specifies the filename and disposition of the PDF"
+              }
+            },
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal Server Error"
+          }
+        }
+      }
+    },
+    "/contract/{document_id}/{version}/pdf": {
+      "get": {
+        "summary": "Get PDF contract by document ID",
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "ID of the document",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "Version of the document",
             "required": true,
             "type": "string"
           }
@@ -110,9 +205,138 @@
         }
       }
     },
-    "/contracts": {
+    "/contract/{document_id}/signatories": {
       "get": {
-        "summary": "Get all contracts",
+        "summary": "get signatories",
+        "requestParams": {},
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "document_id of the resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to get assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contract/{document_id}/verify": {
+      "get": {
+        "summary": "get signatures from pdf",
+        "requestParams": {},
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "document_id of the resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to get assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contract/{document_id}/{version}/verify": {
+      "get": {
+        "summary": "get signatures from pdf",
+        "requestParams": {},
+        "parameters": [
+          {
+            "name": "document_id",
+            "in": "path",
+            "description": "document_id of the resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "description": "version of the resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to get assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/my/contracts": {
+      "get": {
+        "summary": "Get my contracts",
         "parameters": [],
         "responses": {
           "200": {
@@ -133,6 +357,133 @@
           },
           "500": {
             "description": "Failed to get assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/my/invites": {
+      "get": {
+        "summary": "Get my invites",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to get assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/contracts": {
+      "get": {
+        "summary": "ADMIN Get all contracts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to get assets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/invite": {
+      "post": {
+        "summary": "Invite a person",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "signatory": {
+                    "type": "string",
+                    "description": "Email of the signatory"
+                  },
+                  "document_id": {
+                    "name": "document_id",
+                    "description": "ID of the document",
+                    "type": "string"
+                  }
+                },
+                "required": ["document_id","signatory"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Person invited successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to invite person",
             "content": {
               "application/json": {
                 "schema": {
@@ -170,9 +521,63 @@
                     "name": "document_id",
                     "description": "ID of the document",
                     "type": "string"
+                  },
+                  "comment": {
+                    "name": "comment",
+                    "description": "Comment of the signatory",
+                    "type": "string"
                   }
                 },
                 "required": ["document_id","sign_document"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Document signed successfully"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Failed to sign document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/file_fingerprint": {
+      "post": {
+        "summary": "Check file fingerprint",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "pdf": {
+                    "type": "string",
+                    "format": "binary"
+                  },
+                  "document_id": {
+                    "name": "document_id",
+                    "description": "ID of the document",
+                    "type": "string"
+                  }
+                },
+                "required": ["document_id"]
               }
             }
           }
@@ -218,9 +623,24 @@
                   "sign_document": {
                     "type": "string",
                     "enum": ["true", "false"]
+                  },
+                  "title": {
+                    "name": "title",
+                    "description": "Title of the document",
+                    "type": "string"
+                  },
+                  "description": {
+                    "name": "description",
+                    "description": "Description of the document",
+                    "type": "string"
+                  },
+                  "comment": {
+                    "name": "comment",
+                    "description": "Comment of the signatory",
+                    "type": "string"
                   }
                 },
-                "required": ["pdf", "sign_document"]
+                "required": ["pdf", "sign_document", "title", "description"]
               }
             }
           }

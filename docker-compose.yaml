@@ -1,7 +1,7 @@
 version: "2"
 services:
   mariadb:
-    image: mariadb:10.2
+    build: devops/mariadb
     environment:
       - MYSQL_ROOT_PASSWORD
       - MYSQL_DATABASE
@@ -9,6 +9,8 @@ services:
       - MYSQL_PASSWORD
     expose:
       - 3306
+    ports:
+      - 3306:3306
     restart: always
   keycloak:
     restart: always
@@ -59,6 +61,13 @@ services:
   sign-service:
     restart: always
     build: backend/sign-service
+    network_mode: host
+    volumes:
+      - "signatories:/usr/src/app/cases"
+
+  validity-service:
+    restart: always
+    build: backend/validity-service
     network_mode: host
     volumes:
       - "signatories:/usr/src/app/cases"
