@@ -11,7 +11,7 @@ RUN npm install
 # RUN npm ci --omit=dev
 
 # Bundle app source
-COPY ../../.env . 
+COPY .env . 
 COPY . .
 EXPOSE 3000
 ENTRYPOINT [ "/usr/src/app/entrypoint.sh" ]
