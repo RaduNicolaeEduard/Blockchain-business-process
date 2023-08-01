@@ -7,7 +7,9 @@ RUN apt-get -y install nginx \
     && apt-get -y install python3-dev \
     && apt-get -y install build-essential \
     && apt-get -y install libcairo2-dev \
-    && apt-get -y install libgirepository1.0-dev
+    && apt-get -y install libgirepository1.0-dev \
+    && apt-get -y install poppler \
+    && apt-get -y install openssl
 COPY requirements.txt /srv/flask_app/
 RUN pip install -r requirements.txt --src /usr/local/src
 COPY . /srv/flask_app
