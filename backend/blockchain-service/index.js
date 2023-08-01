@@ -105,7 +105,6 @@ app.post('/invite', keycloak.protect(), upload.single('pdf'), async (req, res) =
       return
     }
     const invited = await invite.findOne({ where: { owner: userid, signatory: signatory, caseId: result.ID } });
-    console.log(invited)
     if (invited){
       res.status(400).json({ error: "User already invited"})
       return
@@ -136,7 +135,7 @@ check_if_user_is_invited = async (userid, document_id) => {
 }
 
 app.get('/contract/:document_id/thumbnail', keycloak.protect(), upload.single('pdf'), async (req, res) => {
-  // try {
+  try {
     // get sub from token
     userid = req.kauth.grant.access_token.content.upn
     document_id = req.params.document_id
@@ -182,10 +181,10 @@ app.get('/contract/:document_id/thumbnail', keycloak.protect(), upload.single('p
     });
     await gateway.disconnect();
 
-  // } catch (error) {
-  //   matches = error_message(error)
-  //   res.status(500).json({ error: 'Failed to get contract', message: matches });
-  // }
+  } catch (error) {
+    matches = error_message(error)
+    res.status(500).json({ error: 'Failed to get contract', message: matches });
+  }
 });
 
 
@@ -193,7 +192,6 @@ app.get('/contract/:document_id/signatories', keycloak.protect(), upload.single(
   try {
     userid = req.kauth.grant.access_token.content.upn
     document_id = req.params.document_id
-    console.log(document_id)
     const { contract, gateway, identity } = await connect_to_chaincode(userid);
     const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
     const resultJson = utf8Decoder.decode(resultBytes);
@@ -235,17 +233,53 @@ app.post('/sign_contract', keycloak.protect(), upload.single('pdf'), async (req,
     const resultBytes = await contract.evaluateTransaction('ReadAsset', document_id);
     const resultJson = utf8Decoder.decode(resultBytes);
     const result = JSON.parse(resultJson);
+    // check if user signed already the document
+    for(let i = 0; i < result.signatories.length; i++){
+      if(result.signatories[i].signatory == userid){
+        res.status(400).json({ error: "You already signed this document"})
+        return
+      }
+    }
     let hex
     if (sign_document == "true"){
       latest_version = result.signatories.length - 1;
       filepath = await move_pdf_based_on_caseid(result.signatories[latest_version].path_on_disk, document_id)
-      signPdfX509(filepath, identity.credentials.certificate, identity.credentials.privateKey, userid)
+      await new Promise(resolve => setTimeout(resolve, 50));
+      const fileBuffer1 = fs.readFileSync(filepath);
+      const hashSum1 = crypto.createHash('sha256');
+      hashSum1.update(fileBuffer1);
+      const hex_check = hashSum1.digest('hex');
+      await signPdfX509(filepath, identity.credentials.certificate, identity.credentials.privateKey, userid)
+      timeout = 0
+      // continue when sha of the file has changed
+      while (true){
+        const fileBuffer = fs.readFileSync(filepath);
+        const hashSum = crypto.createHash('sha256');
+        hashSum.update(fileBuffer);
+        const new_hex = hashSum.digest('hex');
+        if(new_hex != hex_check){
+          break
+        }
+        timeout += 1
+        if(timeout > 100){
+          fs.unlink(file_path, (err) => {
+            if (err) {
+              console.error(err)
+              return
+            }
+          }
+          )
+          res.status(500).json({ error: 'Failed to sign document', message: "Timeout" });
+          return
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
       const fileBuffer = fs.readFileSync(filepath);
       const hashSum = crypto.createHash('sha256');
       hashSum.update(fileBuffer);
       hex = hashSum.digest('hex');
     }else{
-      filepath = move_pdf_based_on_caseid(req.file.path, document_id)
+      filepath = await move_pdf_based_on_caseid(req.file.path, document_id)
       const fileBuffer = fs.readFileSync(filepath);
       const hashSum = crypto.createHash('sha256');
       hashSum.update(fileBuffer);
@@ -472,21 +506,47 @@ app.post('/create_contract', keycloak.protect(), upload.single('pdf'), async (re
     timestamp = new Date().toISOString()
     // make an hash from the pdf file
     file_path = await move_pdf_based_on_caseid(req.file.path, id)
-    await new Promise(resolve => setTimeout(resolve, 50));
-    const fileBuffer = fs.readFileSync(file_path);
-    const hashSum = crypto.createHash('sha256');
-    hashSum.update(fileBuffer);
-
-    const hex = hashSum.digest('hex');
 
     // check if file is pdf
     userid = req.kauth.grant.access_token.content.upn
     const { contract, gateway, identity } = await connect_to_chaincode(userid);
 
     if (sign_document == "true"){
+      const fileBuffer = fs.readFileSync(file_path);
+      const hashSum = crypto.createHash('sha256');
+      hashSum.update(fileBuffer);
+      const hex_check = hashSum.digest('hex');
       signPdfX509(file_path, identity.credentials.certificate, identity.credentials.privateKey, userid)
-    }
 
+      timeout = 0
+      // continue when sha of the file has changed
+      while (true){
+        const fileBuffer = fs.readFileSync(file_path);
+        const hashSum = crypto.createHash('sha256');
+        hashSum.update(fileBuffer);
+        const new_hex = hashSum.digest('hex');
+        if(new_hex != hex_check){
+          break
+        }
+        timeout += 1
+        if(timeout > 100){
+          fs.unlink(file_path, (err) => {
+            if (err) {
+              console.error(err)
+              return
+            }
+          }
+          )
+          res.status(500).json({ error: 'Failed to sign document', message: "Timeout" });
+          return
+        }
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    const fileBuffer1 = fs.readFileSync(file_path);
+    const hashSum1 = crypto.createHash('sha256');
+    hashSum1.update(fileBuffer1);
+    const hex = hashSum1.digest('hex');
     // Submit the specified transaction.
     await contract.submitTransaction('CreateAsset',id, userid, hex,file_path,timestamp,title,description,comment);
     console.log('Transaction has been submitted');
@@ -510,7 +570,6 @@ app.get('/my/contracts', keycloak.protect(), async (req, res) => {
 
     const resultJson = utf8Decoder.decode(resultBytes);
     const result = JSON.parse(resultJson);
-    console.log(result)
     document_ids = []
     for(let i = 0; i < result.length; i++){
       document_ids.push(result[i].ID)
@@ -686,13 +745,14 @@ app.get('*', function(req, res){
 });
 move_pdf_based_on_caseid = async (pdfLocation, case_id) => {
   // move the pdf to the case folder
-  salt = uuid.v4()
   const case_folder = path.join(process.cwd(), 'cases', case_id);
   if (!fs.existsSync(case_folder)){
     fs.mkdirSync(case_folder);
   }
+  cases = await fs.readdirSync(path.join(process.cwd(), 'cases', case_id));
+  salt = cases.length + 1
   let new_pdf_location = path.join(case_folder, path.basename(pdfLocation));
-  new_pdf_location = new_pdf_location + salt + ".pdf"
+  new_pdf_location = new_pdf_location.split('.').slice(0, -1).join('.') + salt + '.pdf';
   fs.copyFile(pdfLocation, new_pdf_location, (err) => {
     if (err) throw err;
   });
@@ -828,7 +888,7 @@ createAdmin = async () => {
           }
         }
 
-const signPdfX509 = async (pdfLocation, publickey, privateKey, userid) => {;
+const signPdfX509 = async (pdfLocation, publickey, privateKey, userid) => {
   data = {
     "privateKey": privateKey,
     "publickey": publickey,
