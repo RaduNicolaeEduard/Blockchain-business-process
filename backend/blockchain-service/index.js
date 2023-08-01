@@ -147,11 +147,7 @@ app.get('/contract/:document_id/thumbnail', keycloak.protect(), upload.single('p
 
     const resultJson = utf8Decoder.decode(resultBytes);
     const result = JSON.parse(resultJson);
-    if(result.owner != userid){
-      res.status(401).json({ error: 'You are not authorized' });
-      return
-    }
-    if(!check_if_user_is_invited(userid, document_id)){
+    if(result.owner != userid || !check_if_user_is_invited(userid, document_id)){
       res.status(401).json({ error: 'You are not authorized' });
       return
     }
