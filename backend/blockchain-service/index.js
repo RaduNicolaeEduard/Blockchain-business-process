@@ -408,7 +408,7 @@ app.post('/file_fingerprint', keycloak.protect(), upload.single('pdf'), async (r
     hashSum.update(fileBuffer);
     const hex = hashSum.digest('hex');
     for(let i = 0; i < result.signatories.length; i++){
-      if(result.signatories[i].hash == hex){
+      if(result.signatories[i].sha256 == hex){
         res.status(200).json({ message: 'Document fingerprint matches', id: document_id, version: i + 1 });
         return
       }
