@@ -470,7 +470,7 @@ app.get('/contract/:document_id/:version/verify', keycloak.protect(), upload.sin
     pdf_location = result.signatories[version].path_on_disk
     await gateway.disconnect();
     const json_data = {"path": pdf_location} 
-    const sign_data = await axios.post(SIGN_SERVICE_URL, json_data)
+    const sign_data = await axios.post(process.env.SIGN_SERVICE_URL, json_data)
     response = sign_data.data
     if(result.owner == userid){
       res.status(200).json ({signatures: response });
